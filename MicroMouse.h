@@ -1,3 +1,5 @@
+#define DEG_TO_RAD(X) (M_PI*(X)/180)
+
 uint8_t gamma8[] = {
   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
   0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
@@ -17,6 +19,11 @@ uint8_t gamma8[] = {
   215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 255
 };
 
+struct HSI {
+  float hue;        // [0-360)
+  float saturation; // [0-1.0)
+  float intensity; // [0-1.0)
+};
 
 void ledWrite(HSI color) {
   int r, g, b, w;

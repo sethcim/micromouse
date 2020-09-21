@@ -1,9 +1,8 @@
 
 #include "Mouse.h"
 #include "math.h"
-#include "MicroMouse.h"
+#include "micromouse.h"
 #include "Vector.h"
-#define DEG_TO_RAD(X) (M_PI*(X)/180)
 
 
 #define WHITE 5
@@ -20,11 +19,6 @@
 
 enum Mode { mouse, scroll };
 
-struct HSI {
-  float hue;        // [0-360)
-  float saturation; // [0-1.0)
-  float intensity; // [0-1.0)
-};
 
 volatile MathVector sense;
 
