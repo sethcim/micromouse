@@ -223,15 +223,58 @@ void mouseMove(MathVector distance) {
   distance *=  scale;
 
   //perform mouse smoothing
+  // New idea from Chris: ALWAYS add the sensor value to the buffer; then spool the 
+  // buffer off to USB as quickly as possible
   static MathVector momentum;
-  
+
+  momentum += distance;
+
+  if(momentum.x > 0) {
+    if(momentum.x > 127) {
+      distance.x = 127;
+      momentum -= 127;
+    } else {
+      distance.x = momentum.x;
+      momentum.x = 0;
+    }
+  } else if(momentum.x < 0) {
+    if(momentum.x < -127) {
+      distance.x = -127;
+      momentum += 127;
+    } else {
+      distance.x = momentum.x;
+      momentum.x = 0;
+    }
+  }
+
+  if(momentum.y > 0) {
+    if(momentum.y > 127) {
+      distance.y = 127;
+      momentum -= 127;
+    } else {
+      distance.y = momentum.y;
+      momentum.y = 0;
+    }
+  } else if(momentum.y < 0) {
+    if(momentum.y < -127) {
+      distance.y = -127;
+      momentum += 127;
+    } else {
+      distance.y = momentum.yx;
+      momentum.y = 0;
+    }
+  }
 
   //send movement to OS if there is any
   if (!distance.isZero()) {
     Mouse.move(distance.x, distance.y, 0);
+    Serial.print(momentum.x);
+    Serial.print("\t");
     Serial.print(distance.x);
     Serial.print("\t");
-    Serial.print(scale);
+    Serial.print(momentum.y);
+    Serial.print("\t");
+    Serial.print(distance.y);
     Serial.print("\t");
     Serial.println(sum.x);
   }
