@@ -16,3 +16,48 @@ uint8_t gamma8[] = {
   177, 180, 182, 184, 186, 189, 191, 193, 196, 198, 200, 203, 205, 208, 210, 213,
   215, 218, 220, 223, 225, 228, 231, 233, 236, 239, 241, 244, 247, 249, 252, 255
 };
+
+
+void ledWrite(HSI color) {
+  int r, g, b, w;
+  float cos_h, cos_1047_h;
+  float H = color.hue;
+  float S = color.saturation;
+  float I = color.intensity;
+
+  H = fmod(H, 360); // cycle H around to 0-360 degrees
+  H = 3.14159 * H / (float)180; // Convert to radians.
+  S = S > 0 ? (S < 1 ? S : 1) : 0; // clamp S and I to interval [0,1]
+  I = I > 0 ? (I < 1 ? I : 1) : 0;
+
+  if (H < 2.09439) {
+    cos_h = cos(H);
+    cos_1047_h = cos(1.047196667 - H);
+    r = S * 255 * I / 3 * (1 + cos_h / cos_1047_h);
+    g = S * 255 * I / 3 * (1 + (1 - cos_h / cos_1047_h));
+    b = 0;
+    w = 255 * (1 - S) * I;
+  } else if (H < 4.188787) {
+    H = H - 2.09439;
+    cos_h = cos(H);
+    cos_1047_h = cos(1.047196667 - H);
+    g = S * 255 * I / 3 * (1 + cos_h / cos_1047_h);
+    b = S * 255 * I / 3 * (1 + (1 - cos_h / cos_1047_h));
+    r = 0;
+    w = 255 * (1 - S) * I;
+  } else {
+    H = H - 4.188787;
+    cos_h = cos(H);
+    cos_1047_h = cos(1.047196667 - H);
+    b = S * 255 * I / 3 * (1 + cos_h / cos_1047_h);
+    r = S * 255 * I / 3 * (1 + (1 - cos_h / cos_1047_h));
+    g = 0;
+    w = 255 * (1 - S) * I;
+  }
+
+  analogWrite(RED, gamma8[r]);
+  analogWrite(GREEN, g);
+  analogWrite(BLUE, gamma8[b]);
+  analogWrite(WHITE, gamma8[w]);
+
+}
