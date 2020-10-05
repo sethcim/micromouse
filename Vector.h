@@ -42,28 +42,6 @@ class MathVector : public Printable {
       return *this;
     }
 
-    MathVector& clip(int bound) {
-      MathVector surplus;
-
-      if (x > bound) {
-        surplus.x = x - bound;
-        x = bound;
-      }
-      if (x < -bound) {
-        surplus.x = x + bound;
-        x = -bound;
-      }
-      if (y > bound) {
-        surplus.y = y - bound;
-        y = bound;
-      }
-      if (y > bound) {
-        surplus.y = y - bound;
-        y = bound;
-      }
-      return surplus;
-    }
-
     int lengthSquared() {
       return x * x + y * y;
     }

@@ -3,6 +3,7 @@
 #include "math.h"
 #include "micromouse.h"
 #include "Vector.h"
+#define DEG_TO_RAD(X) (M_PI*(X)/180)
 
 
 #define WHITE 5
@@ -19,13 +20,16 @@
 
 enum Mode { mouse, scroll };
 
-
 volatile MathVector sense;
 
 //movement parameters
-MathVector scale(5, 5); //linear scale factor. At low speeds, this is the smallest movement the mouse can make
-byte acceleration = 2;  // base for acceleration
-byte accelScale = 32;   // controls the exponent for acceleration, smaller numbers are more agressive
+MathVector scale(10, 10);
+//keep a rolling sum of movement over the last _acceleration_ periods
+MathVector history[32];
+byte acceleration = 8;  // ammount of acceleration to apply - max 32
+MathVector sum;
+
+bool debug = true;
 
 /*******************************************/
 void setup() {
@@ -47,7 +51,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(RIGHT), rightHandler, CHANGE);
 
   Mouse.begin();
-  Serial.begin(112500);
+  Serial.begin(115200);
 }
 
 
@@ -156,71 +160,92 @@ HSI animateScroll(int period) {
 
 void mouseMove(MathVector distance) {
 
-  //keep a rolling sum of movement over the last 8 periods
-  static MathVector history[8];
   static uint8_t i = 0;
-  static MathVector sum;
+
 
   sum -= history[i];
   sum += distance;
   history[i] = distance;
   i++;
-  i %= 8;
+  i %= acceleration;
 
-  //perform mouse acceleration
-  for (int dist = sum.lengthSquared() - accelScale; dist > 0; dist -= accelScale) {
-    scale *= acceleration;
-  }
-  distance *=  scale;
+  distance = sum *  scale;
 
-  //perform mouse smoothing
-  // New idea from Chris: ALWAYS add the sensor value to the buffer; then spool the
-  // buffer off to USB as quickly as possible
-  static MathVector momentum;
-
-  momentum += distance;
-
-  if (momentum.x > 127) {
-    distance.x = 127;
-  } else if (momentum.x < -127) {
-    distance.x = -127;
-  } else {
-    distance.x = momentum.x;
-  }
-
-  if (momentum.y > 127) {
-    distance.y = 127;
-  } else if (momentum.y < -127) {
-    distance.y = -127;
-  } else {
-    distance.y = momentum.y;
-  }
-
-  momentum -= distance;
-
+  distance.x = bound(distance.x, 127);
+  distance.y = bound(distance.y, 127);
+  
   //send movement to OS if there is any
   if (!distance.isZero()) {
     Mouse.move(distance.x, distance.y, 0);
-    Serial.print(momentum.x);
-    Serial.print("\t");
-    Serial.print(distance.x);
-    Serial.print("\t");
-    Serial.print(momentum.y);
-    Serial.print("\t");
-    Serial.print(distance.y);
-    Serial.print("\t");
-    Serial.println(sum.x);
+    if(debug) {
+      Serial.print("\t\tDist:\t");
+      Serial.print(distance);
+      Serial.print("\t\tScale:\t");
+      Serial.print(scale);
+      Serial.print("\t\tSum:\t");
+      Serial.println(sum);
+    }
   }
 }
 
+int bound(int input, int limit) {
+  if(input > limit)
+    return limit;
+ 
+  if(input < -limit)
+    return -limit;
+
+  return input;
+ 
+}
 void mouseScroll(MathVector distance) {
-  static byte scale = 1;
-  static byte acceleration = 1;
-  static byte inertia = 1;
   if (distance.y != 0) {
-    distance.y *= scale;
     Mouse.move(0, 0, distance.y);
   }
+}
+
+void ledWrite(HSI color) {
+  int r, g, b, w;
+  float cos_h, cos_1047_h;
+  float H = color.hue;
+  float S = color.saturation;
+  float I = color.intensity;
+
+  H = fmod(H, 360); // cycle H around to 0-360 degrees
+  H = 3.14159 * H / (float)180; // Convert to radians.
+  S = S > 0 ? (S < 1 ? S : 1) : 0; // clamp S and I to interval [0,1]
+  I = I > 0 ? (I < 1 ? I : 1) : 0;
+
+  if (H < 2.09439) {
+    cos_h = cos(H);
+    cos_1047_h = cos(1.047196667 - H);
+    r = S * 255 * I / 3 * (1 + cos_h / cos_1047_h);
+    g = S * 255 * I / 3 * (1 + (1 - cos_h / cos_1047_h));
+    b = 0;
+    w = 255 * (1 - S) * I;
+  } else if (H < 4.188787) {
+    H = H - 2.09439;
+    cos_h = cos(H);
+    cos_1047_h = cos(1.047196667 - H);
+    g = S * 255 * I / 3 * (1 + cos_h / cos_1047_h);
+    b = S * 255 * I / 3 * (1 + (1 - cos_h / cos_1047_h));
+    r = 0;
+    w = 255 * (1 - S) * I;
+  } else {
+    H = H - 4.188787;
+    cos_h = cos(H);
+    cos_1047_h = cos(1.047196667 - H);
+    b = S * 255 * I / 3 * (1 + cos_h / cos_1047_h);
+    r = S * 255 * I / 3 * (1 + (1 - cos_h / cos_1047_h));
+    g = 0;
+    w = 255 * (1 - S) * I;
+  }
+
+  analogWrite(RED, gamma8[r]);
+  analogWrite(GREEN, g);
+  analogWrite(BLUE, gamma8[b]);
+  analogWrite(WHITE, gamma8[w]);
+
 }
 
 void upHandler() {
