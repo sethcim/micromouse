@@ -3,6 +3,7 @@
 #include "math.h"
 #include "micromouse.h"
 #include "Vector.h"
+#include "EEPROM.h"
 #define DEG_TO_RAD(X) (M_PI*(X)/180)
 
 
@@ -23,13 +24,13 @@ enum Mode { mouse, scroll };
 volatile MathVector sense;
 
 //movement parameters
-MathVector scale(10, 10);
+MathVector scale(2, 2);
 //keep a rolling sum of movement over the last _acceleration_ periods
 MathVector history[32];
 byte acceleration = 8;  // ammount of acceleration to apply - max 32
-MathVector sum;
+//MathVector sum;
 
-bool debug = true;
+bool debug = false;
 
 /*******************************************/
 void setup() {
@@ -52,6 +53,10 @@ void setup() {
 
   Mouse.begin();
   Serial.begin(115200);
+  Serial.setTimeout(2);
+  EEPROM.get(0, acceleration);
+  EEPROM.get(4, scale.x);
+  EEPROM.get(8, scale.y);
 }
 
 
@@ -86,15 +91,68 @@ void loop() {
 
   modeButton(mode);
 
+  readSetting();
+  
   //pause until the update period has elapsed
+  //Serial.println(updateTime - millis());
   while (millis() < updateTime) {
     ;
   }
-
+  
   updateTime += period;
 
 }
-/*******************************************/
+
+/************* Serial Settings *****************/
+
+void readSetting() {
+  char command[32];
+  int value;
+  byte len = Serial.readBytesUntil('\n', command, 30);
+
+  if(len == 0) return;
+
+  switch(command[0]) {
+    case 'x':
+      value = atoi(command+1);
+      if(value > 0) scale.x = value;
+      Serial.println(scale);
+      break;
+    case 'y':
+      value = atoi(command+1);
+      if(value > 0) scale.y = value;
+      Serial.println(scale);
+     break;
+    case 's':
+      value = atoi(command+1);
+      if(value > 0) scale = value;
+      Serial.println(scale);
+      break;
+    case 'a':
+      value = atoi(command+1);
+      if(value > 0 && value < 33) {
+        acceleration = value;
+        //sum = 0;
+      }
+      Serial.println(acceleration);
+      break;
+    default:
+      Serial.print("\nCurrent Settings:\nScale:\t");
+      Serial.println(scale);
+      Serial.print("Accleration:\t");
+      Serial.println(acceleration);
+      Serial.println("\nOptions:");
+      Serial.println("x2 - set x scale to 2");
+      Serial.println("y5 - set y scale to 5");
+      Serial.println("s10 - set uniform scale to l0");
+      Serial.println("a8 - set acceleration to 8, maximum 32");
+  }
+  EEPROM.put(0, acceleration);
+  EEPROM.put(4, scale.x);
+  EEPROM.put(8, scale.y);
+}
+
+/************* Mouse Movement ******************/
 
 //switch between mouse and scroll mode on button press and release
 void modeButton(Mode& mode) {
@@ -121,6 +179,59 @@ void modeButton(Mode& mode) {
   }
 }
 
+void mouseMove(MathVector distance) {
+
+  static int8_t i = 0;
+  MathVector sum;
+
+  history[i] = distance * scale;
+
+
+  //linearly weighted sum of history
+  for(uint8_t j = 1; j <= acceleration; j++) {
+    sum += history[(i + j) % acceleration] * j; 
+  }
+  sum.x /= acceleration;
+  sum.y /= acceleration;
+
+  //increment and constrain i
+  i = ++i % acceleration;
+  
+  distance.x = bound(distance.x, 127);
+  distance.y = bound(distance.y, 127);
+  
+  //send movement to OS if there is any
+  if (!sum.isZero()) {
+    Mouse.move(sum.x, sum.y, 0);
+    if(debug) {
+      Serial.print("\t\tDist:\t");
+      Serial.print(distance);
+      Serial.print("\t\tScale:\t");
+      Serial.print(scale);
+      Serial.print("\t\tSum:\t");
+      Serial.println(sum);
+    }
+  }
+}
+
+int bound(int input, int limit) {
+  if(input > limit)
+    return limit;
+ 
+  if(input < -limit)
+    return -limit;
+
+  return input;
+ 
+}
+
+void mouseScroll(MathVector distance) {
+  if (distance.y != 0) {
+    Mouse.move(0, 0, distance.y);
+  }
+}
+
+/********** LED Stuff ****************************/
 
 HSI animateMouse(int period) {
   static HSI color = {330, 0.67, 1 }; // pink
@@ -156,52 +267,6 @@ HSI animateScroll(int period) {
     dir = 1;
 
   return color;
-}
-
-void mouseMove(MathVector distance) {
-
-  static uint8_t i = 0;
-
-
-  sum -= history[i];
-  sum += distance;
-  history[i] = distance;
-  i++;
-  i %= acceleration;
-
-  distance = sum *  scale;
-
-  distance.x = bound(distance.x, 127);
-  distance.y = bound(distance.y, 127);
-  
-  //send movement to OS if there is any
-  if (!distance.isZero()) {
-    Mouse.move(distance.x, distance.y, 0);
-    if(debug) {
-      Serial.print("\t\tDist:\t");
-      Serial.print(distance);
-      Serial.print("\t\tScale:\t");
-      Serial.print(scale);
-      Serial.print("\t\tSum:\t");
-      Serial.println(sum);
-    }
-  }
-}
-
-int bound(int input, int limit) {
-  if(input > limit)
-    return limit;
- 
-  if(input < -limit)
-    return -limit;
-
-  return input;
- 
-}
-void mouseScroll(MathVector distance) {
-  if (distance.y != 0) {
-    Mouse.move(0, 0, distance.y);
-  }
 }
 
 void ledWrite(HSI color) {
@@ -247,6 +312,8 @@ void ledWrite(HSI color) {
   analogWrite(WHITE, gamma8[w]);
 
 }
+
+/************ Interrupt Handlers ************************/
 
 void upHandler() {
   sense.y++;
